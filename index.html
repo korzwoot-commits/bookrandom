@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>랜덤 도서 추천 (CSV + NAVER 프록시)</title>
+  <title>랜덤 도서 추천 (CSV 전용 + 표지 URL 우선)</title>
   <style>
     :root{ --bg:#efe8ff; --card:#ffffff; --text:#1f2937; --muted:#6b7280; --accent:#7c3aed; --border:#e5e7eb; }
     html,body{height:100%;}
@@ -17,7 +17,7 @@
     p.sub{margin:0 0 16px 0;color:#6b7280}
     .book{display:flex;flex-direction:column;gap:16px;margin-top:12px;align-items:center}
     .coverLink{display:block;width:min(90vw,520px)}
-    .cover{width:100%;height:50vh;max-height:520px;min-height:260px;border-radius:18px;overflow:hidden;background:#fff;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;margin:0 auto}
+    .cover{width:100%;height:50vh;max-height:560px;min-height:260px;border-radius:18px;overflow:hidden;background:#fff;border:1px solid #e5e7eb;display:flex;align-items:center;justify-content:center;margin:0 auto}
     .cover img{width:100%;height:100%;object-fit:contain;display:block}
     table.meta{width:100%;border-collapse:collapse;margin:6px 0 0 0}
     table.meta th, table.meta td{border:1px solid #e5e7eb;padding:10px 12px}
@@ -47,7 +47,7 @@
 
       <div id="content" class="book hidden" aria-live="polite">
         <a id="coverLink" class="coverLink" href="#" target="_blank" rel="noopener">
-          <div class="cover" id="coverBox"><img id="coverImg" alt="책 표지" class="hidden"/></div>
+          <div class="cover" id="coverBox"><img id="coverImg" alt="책 표지" class="hidden" referrerpolicy="no-referrer"/></div>
         </a>
 
         <table class="meta" aria-label="도서 정보">
@@ -69,7 +69,7 @@
           <button class="secondary" id="retryBtn" type="button">다시 시도</button>
         </div>
 
-        <p class="hint">응답이 반복되지 않도록 한 번씩 모두 보여준 뒤 초기화됩니다. <a id="sheetLink" href="#" target="_blank" rel="noopener">시트 열기</a></p>
+        <p class="hint">팁: 시트에 <strong>표지 URL</strong> 열을 추가하면 그 URL을 최우선으로 표지로 사용합니다. <a id="sheetLink" href="#" target="_blank" rel="noopener">시트 열기</a></p>
       </div>
 
       <div id="errorBox" class="hint hidden"></div>
@@ -78,8 +78,7 @@
 
   <script>
     const CONFIG = {
-      CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT086p6ekFkvHuNLwM7WXnSniXYrB1Lte_EIOGdoGEvYRdCEbTn8xQdJuIrv58bh_TTOoyxnT1IG2m9/pub?gid=2068358260&single=true&output=csv",
-      NAVER_PROXY: "https://<YOUR_WORKER_SUBDOMAIN>.workers.dev/book-cover"
+      CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT086p6ekFkvHuNLwM7WXnSniXYrB1Lte_EIOGdoGEvYRdCEbTn8xQdJuIrv58bh_TTOoyxnT1IG2m9/pub?gid=2068358260&single=true&output=csv"
     };
 
     // DOM refs
@@ -127,15 +126,15 @@
       const namePart = (item["추천인 이름"] || '').trim();
       const rec = (idPart || namePart) ? `${idPart}${idPart && namePart ? ' ' : ''}${namePart}` : (item["추천인의 학번과 이름"] || item["recommender"] || '-');
       $bookTitle.textContent = title; $bookAuthor.textContent = author; $bookReason.textContent = reason; $recommender.textContent = rec;
+      // 링크는 항상 교보문고 검색으로
       $coverLink.href = buildKyoboLink(title, author);
       $coverLink.title = '교보문고에서 검색하기';
-      loadCover(title, author);
+      // 표지 로드 (표지 URL 열 우선)
+      loadCover(title, author, item);
     }
 
     function onShare(){
-      const payload = `${$bookTitle.textContent} — ${$bookAuthor.textContent}
-추천 이유: ${$bookReason.textContent}
-추천인: ${$recommender.textContent}`;
+      const payload = `${$bookTitle.textContent} — ${$bookAuthor.textContent}\n추천 이유: ${$bookReason.textContent}\n추천인: ${$recommender.textContent}`;
       if(navigator.share){ navigator.share({title:"랜덤 도서 추천", text:payload, url:location.href}).catch(()=>{}); }
       else { navigator.clipboard.writeText(payload).then(()=>alert('현재 추천 내용을 클립보드에 복사했습니다.')); }
     }
@@ -151,9 +150,8 @@
         } else {
           if(ch === '"') inQuotes=true;
           else if(ch === ','){ row.push(field); field=''; }
-          else if(ch === '
-'){ row.push(field); out.push(row.slice()); row.length=0; field=''; }
-          else if(ch !== ''){ field += ch; }
+          else if(ch === '\n'){ row.push(field); out.push(row.slice()); row.length=0; field=''; }
+          else if(ch !== '\r'){ field += ch; }
         }
         i++;
       }
@@ -162,14 +160,14 @@
     }
 
     async function fetchCSVOnly(){
-      const bust = Date.now();
+      const bust = Date.now(); // cache-busting
       const url = CONFIG.CSV_URL + "&_=" + bust;
       const res = await fetch(url, { cache: 'no-store', redirect: 'follow' });
-      if(!res.ok){ throw new Error('CSV HTTP '+res.status+' — 시트의 "웹에 게시" 또는 gid 확인 필요'); }
+      if(!res.ok){ throw new Error('CSV HTTP '+res.status+' — 시트의 \"웹에 게시\" 또는 gid 확인 필요'); }
       const text = await res.text();
       const rows = parseCsv(text);
       if(!rows.length) return [];
-      let headers = rows[0].map(h => (h||'').replace(/^﻿/,'').trim().replace(/\s+/g,' ').replace('추천이유','추천 이유'));
+      let headers = rows[0].map(h => (h||'').replace(/^\uFEFF/,'').trim().replace(/\s+/g,' ').replace('추천이유','추천 이유'));
       const body = rows.slice(1).filter(r => r.some(v => (v||'').trim() !== ''));
       const items = body.map(r => { const o={}; headers.forEach((h,i)=> o[h]=r[i]||''); return o; }).filter(o => (o["책 이름"]||'').trim() !== '');
       return items;
@@ -180,27 +178,31 @@
       return `https://search.kyobobook.co.kr/search?gbCode=TOT&keyword=${q}&target=total`;
     }
 
-    async function loadCover(title, author){
-      const t = encodeURIComponent(title || '');
-      const a = encodeURIComponent((author || '').split(',')[0]);
-      $coverImg.classList.add('hidden'); $coverBox.classList.add('dim');
-
-      // 1) NAVER Books via Cloudflare Worker
-      if(CONFIG.NAVER_PROXY && !CONFIG.NAVER_PROXY.includes('<YOUR_WORKER_SUBDOMAIN>')){
-        try{
-          const url = `${CONFIG.NAVER_PROXY}?title=${t}&author=${a}`;
-          const res = await fetch(url, { cache: 'no-store' });
-          if(res.ok){
-            const data = await res.json();
-            const img = data && (data.image || data.thumbnail);
-            if(img){
-              return setCover(String(img).replace(/^http:/,'https:'));
-            }
+    // --- Manual cover URL 우선 + Open Library 폴백 ---
+    function pickManualCover(item){
+      const keys = ["표지 URL","표지URL","이미지","image","cover","Cover","표지"];
+      for(const k of keys){
+        if(Object.prototype.hasOwnProperty.call(item,k)){
+          let v = String(item[k]||'').trim();
+          if(v){
+            if(/^http:/.test(v)) v = v.replace(/^http:/,'https:');
+            return v;
           }
-        }catch(e){}
+        }
+      }
+      return null;
+    }
+
+    async function loadCover(title, author, item){
+      const manual = pickManualCover(item);
+      $coverImg.classList.add('hidden'); $coverBox.classList.add('dim');
+      if(manual){
+        return setCover(manual);
       }
 
-      // 2) Open Library fallback
+      // Open Library 폴백
+      const t = encodeURIComponent(title || '');
+      const a = encodeURIComponent((author || '').split(',')[0]);
       try{
         const ol = await fetch(`https://openlibrary.org/search.json?title=${t}&author=${a}&limit=1`);
         if(ol.ok){
@@ -211,8 +213,9 @@
             return setCover(`https://covers.openlibrary.org/b/id/${coverId}-L.jpg`);
           }
         }
-      }catch(e){}
+      }catch(e){ /* ignore */ }
 
+      // 실패 시 플레이스홀더
       $coverImg.src=''; $coverImg.alt='표지 이미지를 찾을 수 없음'; $coverImg.classList.add('hidden'); $coverBox.classList.remove('dim');
     }
 
@@ -250,31 +253,5 @@
 
     init();
   </script>
-
-  <!-- Cloudflare Worker 예시 (NAVER Books 프록시)
-  export default {
-    async fetch(request, env) {
-      const url = new URL(request.url);
-      const title = url.searchParams.get('title') || '';
-      const author = url.searchParams.get('author') || '';
-      const q = `${decodeURIComponent(title)} ${decodeURIComponent(author)}`.trim();
-      const api = 'https://openapi.naver.com/v1/search/book.json?display=1&query=' + encodeURIComponent(q);
-      const res = await fetch(api, {
-        headers: {
-          'X-Naver-Client-Id': env.NAVER_CLIENT_ID,
-          'X-Naver-Client-Secret': env.NAVER_CLIENT_SECRET
-        }
-      });
-      const data = await res.json();
-      const item = data?.items?.[0];
-      let image = item?.image || null;
-      let link = item?.link || null;
-      if (image && image.startsWith('http:')) image = image.replace('http:', 'https:');
-      return new Response(JSON.stringify({ image, link, item }), {
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-      });
-    }
-  }
-  -->
 </body>
 </html>
