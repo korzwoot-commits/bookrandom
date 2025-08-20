@@ -12,33 +12,37 @@
     html,body{height:100%;}
     body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Pretendard,Helvetica,Arial,sans-serif;background:#efe8ff;color:#1f2937;display:flex;align-items:center;justify-content:center;padding:20px;text-align:center}
     .wrap{width:100%;max-width:640px;}
-    .card{background:#fff;border:1px solid #e5e7eb;border-radius:24px;padding:20px 18px 22px;box-shadow:0 20px 50px rgba(0,0,0,.08)}
+    .card{background:#fff;border:1px solid var(--border);border-radius:24px;padding:20px 18px 24px;box-shadow:0 20px 50px rgba(0,0,0,.08)}
     h1{margin:0 0 8px 0;font-size:26px;letter-spacing:-0.02em}
-    p.sub{margin:0 0 16px 0;color:#6b7280}
+    p.sub{margin:0 0 16px 0;color:var(--muted)}
     .book{display:flex;flex-direction:column;gap:16px;margin-top:12px;align-items:center}
     table.meta{width:100%;border-collapse:collapse;margin:6px 0 0 0}
-    table.meta th, table.meta td{border:1px solid #e5e7eb;padding:10px 12px}
+    table.meta th, table.meta td{border:1px solid var(--border);padding:10px 12px}
     table.meta th{background:#fafafa;color:#374151;font-weight:700;width:32%}
     table.meta td{font-size:18px}
-    .reason{margin-top:10px;text-align:left;width:100%}
-    .reason .label{font-size:12px;color:#6b7280;letter-spacing:.08em;text-transform:uppercase}
-    .reason .value{margin-top:6px;font-size:18px;line-height:1.6;white-space:pre-wrap}
-    .actions{display:flex;gap:10px;margin-top:14px;justify-content:center;flex-wrap:wrap}
-    button, .btn{appearance:none;border:1px solid #e5e7eb;background:#fff;border-radius:12px;padding:12px 16px;font-weight:700;cursor:pointer;color:#374151;text-decoration:none;display:inline-block}
-    .primary{background:#7c3aed;border-color:#7c3aed;color:#fff}
-    .badge{display:inline-flex;align-items:center;gap:6px;border:1px solid #e5e7eb;border-radius:999px;padding:6px 10px;font-size:12px;color:#6b7280;background:#fff}
-    .spin{width:14px;height:14px;border:3px solid rgba(0,0,0,.12);border-top-color:#7c3aed;border-radius:50%;animation:spin 1s linear infinite}
+    .reason{position:relative;margin-top:10px;text-align:left;width:100%;background:#fff;border-radius:12px}
+    .reason .label{font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+    .reason .value{margin-top:6px;font-size:18px;line-height:1.6;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+    /* 접기 상태에서 높이 제한 + 페이드 */
+    .reason.collapsed .value{max-height:220px;overflow:hidden}
+    .reason .fade{display:none}
+    .reason.collapsed .fade{display:block;position:absolute;left:0;right:0;bottom:42px;height:60px;background:linear-gradient(to bottom, rgba(255,255,255,0), #fff)}
+    .reason-controls{display:flex;justify-content:flex-end;margin-top:8px}
+    .btn, button{appearance:none;border:1px solid var(--border);background:#fff;border-radius:12px;padding:10px 14px;font-weight:700;cursor:pointer;color:#374151;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+    .primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    .badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:6px 10px;font-size:12px;color:var(--muted);background:#fff}
+    .spin{width:14px;height:14px;border:3px solid rgba(0,0,0,.12);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-    .hint{margin-top:8px;color:#6b7280;font-size:12px}
-    a{color:#7c3aed;text-decoration:none} a:hover{text-decoration:underline}
+    .hint{margin-top:8px;color:var(--muted);font-size:12px}
+    a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
     .hidden{display:none}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
+    <div class="card" id="cardRoot">
       <div class="badge" id="statusBadge"><span class="spin" id="loader"></span><span id="statusText">스프레드시트(CSV)에서 불러오는 중…</span></div>
-      <h1>랜덤 도서 추천</h1>
+      <h1>운천고 2학년 친구들의 인생 책</h1>
       <p class="sub">2학년 친구들이 적어준 추천 도서를 랜덤으로 띄워줍니다. 궁금한 책은 교보문고 링크를 클릭해서 바로 주문해보세요 ^_^</p>
 
       <div id="content" class="book hidden" aria-live="polite">
@@ -50,14 +54,18 @@
           </tbody>
         </table>
 
-        <div class="reason">
+        <div class="reason collapsed" id="reasonBox">
           <div class="label">추천 이유</div>
           <div class="value" id="bookReason">-</div>
+          <div class="fade" aria-hidden="true"></div>
+          <div class="reason-controls">
+            <button class="btn" id="toggleReasonBtn" type="button" aria-expanded="false" aria-controls="bookReason">더보기</button>
+          </div>
         </div>
 
-        <a id="kyoboBtn" class="btn" href="#" target="_blank" rel="noopener">교보문고에서 검색하기</a>
+        <a id="kyoboBtn" class="btn" href="#" target="_blank" rel="noopener" style="margin-top:4px">교보문고에서 검색하기</a>
 
-        <div class="actions">
+        <div class="actions" style="margin-top:14px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap">
           <button class="primary" id="shuffleBtn" type="button">다른 추천 보기</button>
           <button class="btn" id="shareBtn" type="button">이 추천 공유</button>
           <button class="btn" id="retryBtn" type="button">다시 시도</button>
@@ -88,6 +96,11 @@
     const $shareBtn = document.getElementById('shareBtn');
     const $retryBtn = document.getElementById('retryBtn');
     const $kyoboBtn = document.getElementById('kyoboBtn');
+    const $cardRoot = document.getElementById('cardRoot');
+
+    const $reasonBox = document.getElementById('reasonBox');
+    const $toggleReasonBtn = document.getElementById('toggleReasonBtn');
+    const REASON_COLLAPSED_MAX = 220;
 
     let pool = [], history = [];
 
@@ -113,6 +126,24 @@
       return `https://search.kyobobook.co.kr/search?gbCode=TOT&keyword=${q}&target=total`;
     }
 
+    function collapseReason(){
+      $reasonBox.classList.add('collapsed');
+      $toggleReasonBtn.textContent = '더보기';
+      $toggleReasonBtn.setAttribute('aria-expanded','false');
+    }
+    function expandReason(){
+      $reasonBox.classList.remove('collapsed');
+      $toggleReasonBtn.textContent = '접기';
+      $toggleReasonBtn.setAttribute('aria-expanded','true');
+    }
+    function updateReasonToggle(){
+      requestAnimationFrame(()=>{
+        const needToggle = $bookReason.scrollHeight > REASON_COLLAPSED_MAX + 10;
+        $toggleReasonBtn.style.display = needToggle ? 'inline-flex' : 'none';
+        if(!needToggle){ expandReason(); } else { collapseReason(); }
+      });
+    }
+
     function render(item){
       if(!item){ return; }
       const title = item["책 이름"] || item["book"] || item["title"] || '-';
@@ -129,11 +160,13 @@
 
       $kyoboBtn.href = buildKyoboLink(title, author);
       $kyoboBtn.title = '교보문고에서 검색하기';
+
+      updateReasonToggle();
     }
 
     function onShare(){
       const payload = `${$bookTitle.textContent} — ${$bookAuthor.textContent}\n추천 이유: ${$bookReason.textContent}\n추천인: ${$recommender.textContent}`;
-      if(navigator.share){ navigator.share({title:"랜덤 도서 추천", text:payload, url:location.href}).catch(()=>{}); }
+      if(navigator.share){ navigator.share({title:"운천고 2학년 친구들의 인생 책", text:payload, url:location.href}).catch(()=>{}); }
       else { navigator.clipboard.writeText(payload).then(()=>alert('현재 추천 내용을 클립보드에 복사했습니다.')); }
     }
 
@@ -192,9 +225,21 @@
       }
     }
 
-    $shuffleBtn.addEventListener('click', ()=>{ const it = pickOne(); if(it) render(it); });
-    $shareBtn.addEventListener('click', onShare);
-    $retryBtn.addEventListener('click', ()=>{ document.getElementById('statusBadge').classList.remove('hidden'); setStatus('다시 시도 중…', true); init(); });
+    document.getElementById('toggleReasonBtn').addEventListener('click', ()=>{
+      if($reasonBox.classList.contains('collapsed')) expandReason(); else collapseReason();
+    });
+    document.getElementById('shuffleBtn').addEventListener('click', ()=>{
+      const it = pickOne(); if(it) render(it);
+      collapseReason();
+      $cardRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    document.getElementById('shareBtn').addEventListener('click', onShare);
+    document.getElementById('retryBtn').addEventListener('click', ()=>{
+      document.getElementById('statusBadge').classList.remove('hidden');
+      setStatus('다시 시도 중…', true);
+      init();
+      $cardRoot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
 
     init();
   </script>
